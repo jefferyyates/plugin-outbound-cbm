@@ -7,10 +7,11 @@ const openAChatTask = async (
   From,
   Body,
   WorkerFriendlyName,
+  WorkerSid,
   routingProperties
 ) => {
   const channelType = To.startsWith("whatsapp") ? "whatsapp" : "sms";
-  console.log(To, From, Body, WorkerFriendlyName, routingProperties);
+  console.log(To, From, Body, WorkerFriendlyName, WorkerSid, routingProperties);
   const interaction = await client.flexApi.v1.interaction.create({
     channel: {
       type: channelType,
@@ -27,7 +28,7 @@ const openAChatTask = async (
         ...routingProperties,
         task_channel_unique_name: "chat",
         attributes: {
-          from: To,
+          from: From,
           direction: "outbound",
           customerName: "Customer",
           customerAddress: To,
@@ -42,7 +43,7 @@ const openAChatTask = async (
   const taskAttributes = JSON.parse(interaction.routing.properties.attributes);
   console.log(taskAttributes);
 
-  const message = await client.conversations
+  const message = await client.conversations.v1
     .conversations(taskAttributes.conversationSid)
     .messages.create({ author: WorkerFriendlyName, body: Body });
 
@@ -62,19 +63,23 @@ const sendOutboundMessage = async (
   Body,
   KnownAgentRoutingFlag,
   WorkerFriendlyName,
+  WorkerSid,
   InboundStudioFlow
 ) => {
-  const friendlyName = `Outbound $(From) -> $(To)`;
+  const friendlyName = `Outbound ${From} -> ${To}`;
   console.log(friendlyName);
+  console.log("Studio flow SID is", InboundStudioFlow);
 
   // Set flag in channel attribtues so Studio knows if it should set task attribute to target known agent
   let converstationAttributes = { KnownAgentRoutingFlag };
-  if (KnownAgentRoutingFlag)
+  if (KnownAgentRoutingFlag) {
     converstationAttributes.KnownAgentWorkerFriendlyName = WorkerFriendlyName;
+    converstationAttributes.KnownAgentWorkerSid = WorkerSid;
+  }
   const attributes = JSON.stringify(converstationAttributes);
 
   // Create Channel
-  const channel = await client.conversations.conversations.create({
+  const channel = await client.conversations.v1.conversations.create({
     friendlyName,
     attributes,
   });
@@ -82,7 +87,7 @@ const sendOutboundMessage = async (
   console.log(channel);
   try {
     // Add customer to channel
-    const participant = await client.conversations
+    const participant = await client.conversations.v1
       .conversations(channel.sid)
       .participants.create({
         "messagingBinding.address": To,
@@ -106,17 +111,17 @@ const sendOutboundMessage = async (
   }
 
   // Point the channel to Studio
-  const webhook = client.conversations
+  const webhook = await client.conversations.v1
     .conversations(channel.sid)
     .webhooks.create({
-      target: "studio",
-      configuration: { flowSid: InboundStudioFlow },
+      target: 'studio',
+      'configuration.flowSid': `${InboundStudioFlow}`
     });
 
   console.log(webhook);
 
   // Add agents initial message
-  const message = await client.conversations
+  const message = await client.conversations.v1
     .conversations(channel.sid)
     .messages.create({ author: WorkerFriendlyName, body: Body });
 
@@ -162,6 +167,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
         From,
         Body,
         WorkerFriendlyName,
+        WorkerSid,
         {
           workspace_sid: WorkspaceSid,
           workflow_sid: WorkflowSid,
@@ -178,6 +184,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
         Body,
         KnownAgentRoutingFlag,
         WorkerFriendlyName,
+        WorkerSid,
         InboundStudioFlow
       );
     }
