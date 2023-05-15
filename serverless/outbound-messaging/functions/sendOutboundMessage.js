@@ -64,7 +64,8 @@ const sendOutboundMessage = async (
   KnownAgentRoutingFlag,
   WorkerFriendlyName,
   WorkerSid,
-  InboundStudioFlow
+  InboundStudioFlow,
+  skillsNeeded
 ) => {
   const friendlyName = `Outbound ${From} -> ${To}`;
   console.log(friendlyName);
@@ -76,6 +77,7 @@ const sendOutboundMessage = async (
     converstationAttributes.KnownAgentWorkerFriendlyName = WorkerFriendlyName;
     converstationAttributes.KnownAgentWorkerSid = WorkerSid;
   }
+  converstationAttributes.skillsNeeded = skillsNeeded;
   const attributes = JSON.stringify(converstationAttributes);
 
   // Create Channel
@@ -141,6 +143,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     WorkerSid,
     WorkerFriendlyName,
     InboundStudioFlow,
+    skillsNeeded
   } = event;
 
   let { OpenChatFlag, KnownAgentRoutingFlag } = event;
@@ -159,34 +162,73 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   try {
     let sendResponse = null;
 
-    if (OpenChatFlag) {
-      // create task and add the message to a channel
-      sendResponse = await openAChatTask(
-        client,
-        To,
-        From,
-        Body,
-        WorkerFriendlyName,
-        WorkerSid,
-        {
-          workspace_sid: WorkspaceSid,
-          workflow_sid: WorkflowSid,
-          queue_sid: QueueSid,
-          worker_sid: WorkerSid,
+    // Check if there is already an active conversation for
+    // the TO number
+    // Get all conversations for a participant
+    const conversations = await client
+      .conversations
+      .v1
+      .participantConversations
+      .list({address: To});
+
+    let errorCount = 0;
+    let foundCount = 0;
+
+    // Use for loop to sequentially fetch info
+    // (slow, but avoids hammering API and getting 'Too many requests' errors)
+    for(let x=0; x < conversations.length; x++) {
+        try {
+            const conversation = await client
+                .conversations
+                .v1
+                .conversations(conversations[x].conversationSid)
+                .fetch();
+            console.log("Conversation: ", conversation.sid, conversation.state, conversation.friendlyName)
+            if(conversation.state == "active") {
+              foundCount++;
+            }
         }
-      );
+        catch(e) {
+            errorCount++;
+        }
+    }
+
+    if(foundCount > 0) {
+      sendResponse = {
+        success: false,
+        errorMessage: `Error sending message. There is an open conversation already to ${To}`,
+      };
     } else {
-      // create a channel but wait until customer replies before creating a task
-      sendResponse = await sendOutboundMessage(
-        client,
-        To,
-        From,
-        Body,
-        KnownAgentRoutingFlag,
-        WorkerFriendlyName,
-        WorkerSid,
-        InboundStudioFlow
-      );
+      if (OpenChatFlag) {
+        // create task and add the message to a channel
+        sendResponse = await openAChatTask(
+          client,
+          To,
+          From,
+          Body,
+          WorkerFriendlyName,
+          WorkerSid,
+          {
+            workspace_sid: WorkspaceSid,
+            workflow_sid: WorkflowSid,
+            queue_sid: QueueSid,
+            worker_sid: WorkerSid,
+          }
+        );
+      } else {
+        // create a channel but wait until customer replies before creating a task
+        sendResponse = await sendOutboundMessage(
+          client,
+          To,
+          From,
+          Body,
+          KnownAgentRoutingFlag,
+          WorkerFriendlyName,
+          WorkerSid,
+          InboundStudioFlow,
+          skillsNeeded
+        );
+      }
     }
 
     response.appendHeader("Content-Type", "application/json");

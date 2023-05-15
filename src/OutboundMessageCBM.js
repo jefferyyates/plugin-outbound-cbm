@@ -21,8 +21,17 @@ export default class OutboundMessageCBM extends FlexPlugin {
    * @param flex { typeof import('@twilio/flex-ui') }
    */
   async init(flex, manager) {
-    flex.setProviders({
-      PasteThemeProvider: CustomizationProvider,
+    // This is a NONrecommneded way to do this
+    
+    flex.CountryManager.getAllCountries = () => {
+      return  [
+          { name: 'Canada', alpha2Code: 'CA', key: 'CA', code: '1' },
+          { name: 'United States of America', alpha2Code: 'US', key: 'US', code: '1' }
+        ]};
+    
+
+      flex.setProviders({
+        PasteThemeProvider: CustomizationProvider,
     });
 
     registerNotifications(manager);
