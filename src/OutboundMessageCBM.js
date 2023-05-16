@@ -21,7 +21,8 @@ export default class OutboundMessageCBM extends FlexPlugin {
    * @param flex { typeof import('@twilio/flex-ui') }
    */
   async init(flex, manager) {
-    // This is a NONrecommneded way to do this
+
+    // This is a NOT recommneded way to do this
     
     flex.CountryManager.getAllCountries = () => {
       return  [

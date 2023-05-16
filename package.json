@@ -1,6 +1,6 @@
 {
   "name": "outbound-cbm",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "private": true,
   "scripts": {
     "postinstall": "flex-plugin pre-script-check"
@@ -12,7 +12,7 @@
     "prop-types": "^15.7.2",
     "react": "17.0.2",
     "react-dom": "17.0.2",
-    "@twilio/flex-plugin-scripts": "6.1.0"
+    "@twilio/flex-plugin-scripts": "6.0.4"
   },
   "devDependencies": {
     "@twilio/flex-ui": "2.1.1",
