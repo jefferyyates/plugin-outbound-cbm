@@ -48,8 +48,23 @@ const sendOutboundMessage = async (sendOutboundParams) => {
 // TODO - fallback and try and use outbound calling setup sids
 // TODO - allow override of queue from action payload
 Actions.registerAction("SendOutboundMessage", (payload) => {
-  if (!payload.callerId)
-    payload.callerId = process.env.FLEX_APP_TWILIO_FROM_NUMBER;
+  const routingSkills = manager.workerClient.attributes.routing.skills;
+  let skillNeeded = "";
+  let skillBasedCallerId = "";
+  let skillBasedQueueSid = "";
+  if(routingSkills.includes("Outbound KMI")) {
+    skillNeeded = "Outbound KMI";
+    skillBasedCallerId = process.env.FLEX_APP_TWILIO_FROM_NUMBER_KMI;
+    skillBasedQueueSid = process.env.FLEX_APP_QUEUE_SID_KMI;
+  } else {
+    skillNeeded = "Outbound CT";
+    skillBasedCallerId = process.env.FLEX_APP_TWILIO_FROM_NUMBER_CT;
+    skillBasedQueueSid = process.env.FLEX_APP_QUEUE_SID_CT;
+  }
+
+  if (!payload.callerId) {
+    payload.callerId = skillBasedCallerId;
+  }
 
   if (payload.openChat) {
     // create a task immediately
@@ -63,8 +78,9 @@ Actions.registerAction("SendOutboundMessage", (payload) => {
       WorkerFriendlyName: manager.user.identity,
       WorkspaceSid: process.env.FLEX_APP_WORKSPACE_SID,
       WorkflowSid: process.env.FLEX_APP_WORKFLOW_SID,
-      QueueSid: process.env.FLEX_APP_QUEUE_SID,
+      QueueSid: skillBasedQueueSid,
       InboundStudioFlow: process.env.FLEX_APP_INBOUND_STUDIO_FLOW,
+      skillsNeeded: skillNeeded
     };
     sendOutboundMessage(sendOutboundParams);
   } else {
@@ -81,6 +97,7 @@ Actions.registerAction("SendOutboundMessage", (payload) => {
       WorkflowSid: "",
       QueueSid: "",
       InboundStudioFlow: process.env.FLEX_APP_INBOUND_STUDIO_FLOW,
+      skillsNeeded: skillNeeded
     };
     sendOutboundMessage(sendOutboundParams);
   }

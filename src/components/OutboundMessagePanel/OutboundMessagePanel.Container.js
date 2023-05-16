@@ -136,7 +136,7 @@ const OutboundMessagePanel = (props) => {
                 onPhoneNumberChange={setToNumber}
                 hideActions
                 disabled={false}
-                defaultCountryAlpha2Code={"US"}
+                defaultCountryAlpha2Code={"CA"}
               />
             </DialerContainer>
             <MessageContainer theme={props.theme}>

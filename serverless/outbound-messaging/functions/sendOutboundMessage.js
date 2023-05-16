@@ -7,10 +7,11 @@ const openAChatTask = async (
   From,
   Body,
   WorkerFriendlyName,
+  WorkerSid,
   routingProperties
 ) => {
   const channelType = To.startsWith("whatsapp") ? "whatsapp" : "sms";
-  console.log(To, From, Body, WorkerFriendlyName, routingProperties);
+  console.log(To, From, Body, WorkerFriendlyName, WorkerSid, routingProperties);
   const interaction = await client.flexApi.v1.interaction.create({
     channel: {
       type: channelType,
@@ -27,7 +28,7 @@ const openAChatTask = async (
         ...routingProperties,
         task_channel_unique_name: "chat",
         attributes: {
-          from: To,
+          from: From,
           direction: "outbound",
           customerName: "Customer",
           customerAddress: To,
@@ -42,7 +43,7 @@ const openAChatTask = async (
   const taskAttributes = JSON.parse(interaction.routing.properties.attributes);
   console.log(taskAttributes);
 
-  const message = await client.conversations
+  const message = await client.conversations.v1
     .conversations(taskAttributes.conversationSid)
     .messages.create({ author: WorkerFriendlyName, body: Body });
 
@@ -62,19 +63,25 @@ const sendOutboundMessage = async (
   Body,
   KnownAgentRoutingFlag,
   WorkerFriendlyName,
-  InboundStudioFlow
+  WorkerSid,
+  InboundStudioFlow,
+  skillsNeeded
 ) => {
-  const friendlyName = `Outbound $(From) -> $(To)`;
+  const friendlyName = `Outbound ${From} -> ${To}`;
   console.log(friendlyName);
+  console.log("Studio flow SID is", InboundStudioFlow);
 
   // Set flag in channel attribtues so Studio knows if it should set task attribute to target known agent
   let converstationAttributes = { KnownAgentRoutingFlag };
-  if (KnownAgentRoutingFlag)
+  if (KnownAgentRoutingFlag) {
     converstationAttributes.KnownAgentWorkerFriendlyName = WorkerFriendlyName;
+    converstationAttributes.KnownAgentWorkerSid = WorkerSid;
+  }
+  converstationAttributes.skillsNeeded = skillsNeeded;
   const attributes = JSON.stringify(converstationAttributes);
 
   // Create Channel
-  const channel = await client.conversations.conversations.create({
+  const channel = await client.conversations.v1.conversations.create({
     friendlyName,
     attributes,
   });
@@ -82,7 +89,7 @@ const sendOutboundMessage = async (
   console.log(channel);
   try {
     // Add customer to channel
-    const participant = await client.conversations
+    const participant = await client.conversations.v1
       .conversations(channel.sid)
       .participants.create({
         "messagingBinding.address": To,
@@ -106,17 +113,17 @@ const sendOutboundMessage = async (
   }
 
   // Point the channel to Studio
-  const webhook = client.conversations
+  const webhook = await client.conversations.v1
     .conversations(channel.sid)
     .webhooks.create({
-      target: "studio",
-      configuration: { flowSid: InboundStudioFlow },
+      target: 'studio',
+      'configuration.flowSid': `${InboundStudioFlow}`
     });
 
   console.log(webhook);
 
   // Add agents initial message
-  const message = await client.conversations
+  const message = await client.conversations.v1
     .conversations(channel.sid)
     .messages.create({ author: WorkerFriendlyName, body: Body });
 
@@ -136,6 +143,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     WorkerSid,
     WorkerFriendlyName,
     InboundStudioFlow,
+    skillsNeeded
   } = event;
 
   let { OpenChatFlag, KnownAgentRoutingFlag } = event;
@@ -154,32 +162,73 @@ exports.handler = TokenValidator(async function (context, event, callback) {
   try {
     let sendResponse = null;
 
-    if (OpenChatFlag) {
-      // create task and add the message to a channel
-      sendResponse = await openAChatTask(
-        client,
-        To,
-        From,
-        Body,
-        WorkerFriendlyName,
-        {
-          workspace_sid: WorkspaceSid,
-          workflow_sid: WorkflowSid,
-          queue_sid: QueueSid,
-          worker_sid: WorkerSid,
+    // Check if there is already an active conversation for
+    // the TO number
+    // Get all conversations for a participant
+    const conversations = await client
+      .conversations
+      .v1
+      .participantConversations
+      .list({address: To});
+
+    let errorCount = 0;
+    let foundCount = 0;
+
+    // Use for loop to sequentially fetch info
+    // (slow, but avoids hammering API and getting 'Too many requests' errors)
+    for(let x=0; x < conversations.length; x++) {
+        try {
+            const conversation = await client
+                .conversations
+                .v1
+                .conversations(conversations[x].conversationSid)
+                .fetch();
+            console.log("Conversation: ", conversation.sid, conversation.state, conversation.friendlyName)
+            if(conversation.state == "active") {
+              foundCount++;
+            }
         }
-      );
+        catch(e) {
+            errorCount++;
+        }
+    }
+
+    if(foundCount > 0) {
+      sendResponse = {
+        success: false,
+        errorMessage: `Error sending message. There is an open conversation already to ${To}`,
+      };
     } else {
-      // create a channel but wait until customer replies before creating a task
-      sendResponse = await sendOutboundMessage(
-        client,
-        To,
-        From,
-        Body,
-        KnownAgentRoutingFlag,
-        WorkerFriendlyName,
-        InboundStudioFlow
-      );
+      if (OpenChatFlag) {
+        // create task and add the message to a channel
+        sendResponse = await openAChatTask(
+          client,
+          To,
+          From,
+          Body,
+          WorkerFriendlyName,
+          WorkerSid,
+          {
+            workspace_sid: WorkspaceSid,
+            workflow_sid: WorkflowSid,
+            queue_sid: QueueSid,
+            worker_sid: WorkerSid,
+          }
+        );
+      } else {
+        // create a channel but wait until customer replies before creating a task
+        sendResponse = await sendOutboundMessage(
+          client,
+          To,
+          From,
+          Body,
+          KnownAgentRoutingFlag,
+          WorkerFriendlyName,
+          WorkerSid,
+          InboundStudioFlow,
+          skillsNeeded
+        );
+      }
     }
 
     response.appendHeader("Content-Type", "application/json");
