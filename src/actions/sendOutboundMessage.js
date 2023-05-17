@@ -62,9 +62,12 @@ Actions.registerAction("SendOutboundMessage", (payload) => {
     skillBasedQueueSid = process.env.FLEX_APP_QUEUE_SID_CT;
   }
 
-  if (!payload.callerId) {
+  // for CAA demo,
+  // remove condition check,
+  // always use skillBasedCallerId
+  //if (!payload.callerId) {
     payload.callerId = skillBasedCallerId;
-  }
+  //}
 
   if (payload.openChat) {
     // create a task immediately
