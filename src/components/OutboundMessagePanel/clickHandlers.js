@@ -10,12 +10,13 @@ export const onSendClickHandler = (
   messageBody
 ) => {
   // default is open a chat task which would have had the message added
+  // making callerId default to SOME value-it gets properly set in sendOutboundMessage.js
   let payload = {
     destination: messageType === "whatsapp" ? "whatsapp:" + toNumber : toNumber,
     callerId:
       messageType === "whatsapp"
         ? "whatsapp:" + process.env.FLEX_APP_TWILIO_WHATSAPP_FROM_NUMBER
-        : process.env.FLEX_APP_TWILIO_FROM_NUMBER,
+        : process.env.FLEX_APP_TWILIO_FROM_NUMBER_CT,
     body: messageBody,
     openChat: true,
     routeToMe: true,
