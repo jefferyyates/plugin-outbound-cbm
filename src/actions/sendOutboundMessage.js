@@ -96,7 +96,7 @@ Actions.registerAction("SendOutboundMessage", (payload) => {
       Body: payload.body,
       WorkerSid: manager.workerClient.sid,
       WorkerFriendlyName: manager.user.identity,
-      WorkspaceSid: "",
+      WorkspaceSid: process.env.FLEX_APP_WORKSPACE_SID,
       WorkflowSid: "",
       QueueSid: "",
       InboundStudioFlow: process.env.FLEX_APP_INBOUND_STUDIO_FLOW,
