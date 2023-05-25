@@ -6,7 +6,6 @@ import "./actions/toggleOutboundMessagePanel";
 import "./actions/sendOutboundMessage";
 import registerNotifications from "./utils/notifications";
 import { CustomizationProvider } from "@twilio-paste/core/customization";
-import { styled } from "@twilio/flex-ui";
 
 const PLUGIN_NAME = "OutboundMessageCBM";
 
@@ -93,7 +92,6 @@ export default class OutboundMessageCBM extends FlexPlugin {
     });
 
     flex.TaskListItem.Content.addWrapper(Original => props => {
-      console.log("JEFF other", props.task);
       const theme = {
         ...props.theme,
         componentThemeOverrides: {
@@ -104,6 +102,12 @@ export default class OutboundMessageCBM extends FlexPlugin {
           }
         }
       }
+
+      // create a default, hidden filter on TeamsView to only show team members.
+      // This shows using a new attribute 'team_name', but could easily be
+      // based on attributes.routing.skills
+      const myTeam = manager.workerClient.attributes.team_name;
+      flex.TeamsView.defaultProps.hiddenFilter = `data.attributes.team_name CONTAINS "${myTeam}"`;
 
       return (
         <flex.StorelessThemeProvider themeConf={theme}>

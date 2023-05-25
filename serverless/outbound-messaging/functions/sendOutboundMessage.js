@@ -173,6 +173,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
 
     let errorCount = 0;
     let foundCount = 0;
+    let agentName = "";
 
     // Use for loop to sequentially fetch info
     // (slow, but avoids hammering API and getting 'Too many requests' errors)
@@ -183,9 +184,45 @@ exports.handler = TokenValidator(async function (context, event, callback) {
                 .v1
                 .conversations(conversations[x].conversationSid)
                 .fetch();
-            console.log("Conversation: ", conversation.sid, conversation.state, conversation.friendlyName)
             if(conversation.state == "active") {
-              foundCount++;
+
+              const participants = await client
+                .conversations
+                .v1
+                .conversations(conversations[x].conversationSid)
+                .participants.list();
+
+              console.log("Conversation: ", conversation.sid, conversation.state, conversation.friendlyName, participants);
+              participants.forEach(p => {
+                console.log("participant", p);
+                agentName = p.identity ? p.identity : agentName;
+              });
+
+              console.log("prepping", WorkspaceSid, agentName);
+              const workerList = await client
+                .taskrouter
+                .v1
+                .workspaces(WorkspaceSid)
+                .workers
+                .list({ targetWorkersExpression: `friendly_name IN ['${agentName}']` });
+              console.log("GOT SOMEHEINTG", workerList);
+              if(workerList.length > 0) {
+                console.log("worker found", workerList[0]);
+                agentName = JSON.parse(workerList[0].attributes).full_name;
+              }
+
+              // Check if this is inbound or not
+              // curl 'https://taskrouter.twilio.com/v1/Workspaces/WSed07f6e2a5adc1b88f397b9c0de3d551/Tasks?EvaluateTaskAttributes=conversationSid%20%3D%3D%20'CH415e7a55ef0742cb8f886db67c49047d'&HasAddons=false' -u AC96a3b3007665b7bc66c62872f16c44c2:[AuthToken]
+
+              const taskList = await client.taskrouter.v1.workspaces(WorkspaceSid)
+                .tasks
+                .list({
+                  evaluateTaskAttributes: `direction == "inbound" AND conversationSid == "${conversation.sid}"`
+                });
+              
+              if(taskList.length == 0) {
+                foundCount++;
+              }
             }
         }
         catch(e) {
@@ -196,7 +233,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
     if(foundCount > 0) {
       sendResponse = {
         success: false,
-        errorMessage: `Error sending message. There is an open conversation already to ${To}`,
+        errorMessage: `Agent ${agentName} has an active conversation with this member at phone ${To}`,
       };
     } else {
       if (OpenChatFlag) {
