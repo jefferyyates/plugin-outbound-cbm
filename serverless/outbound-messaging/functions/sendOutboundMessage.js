@@ -192,37 +192,48 @@ exports.handler = TokenValidator(async function (context, event, callback) {
                 .conversations(conversations[x].conversationSid)
                 .participants.list();
 
-              console.log("Conversation: ", conversation.sid, conversation.state, conversation.friendlyName, participants);
               participants.forEach(p => {
-                console.log("participant", p);
                 agentName = p.identity ? p.identity : agentName;
               });
 
-              console.log("prepping", WorkspaceSid, agentName);
               const workerList = await client
                 .taskrouter
                 .v1
                 .workspaces(WorkspaceSid)
                 .workers
                 .list({ targetWorkersExpression: `friendly_name IN ['${agentName}']` });
-              console.log("GOT SOMEHEINTG", workerList);
               if(workerList.length > 0) {
-                console.log("worker found", workerList[0]);
                 agentName = JSON.parse(workerList[0].attributes).full_name;
               }
 
               // Check if this is inbound or not
-              // curl 'https://taskrouter.twilio.com/v1/Workspaces/WSed07f6e2a5adc1b88f397b9c0de3d551/Tasks?EvaluateTaskAttributes=conversationSid%20%3D%3D%20'CH415e7a55ef0742cb8f886db67c49047d'&HasAddons=false' -u AC96a3b3007665b7bc66c62872f16c44c2:[AuthToken]
+              // Check if this is for the same queue or skill as an existing outbound
+              // -- extra checks replacing this:  evaluateTaskAttributes: `direction == "inbound" AND conversationSid == "${conversation.sid}"`
+              // Conditions:
+              // -- Existing Inbound (aka roadside assistance) messages do not keep outbound messages from being created.
+              // -- Existing Outbound regardless of skill/queue DO keep new outbound from being created.
+
 
               const taskList = await client.taskrouter.v1.workspaces(WorkspaceSid)
                 .tasks
                 .list({
-                  evaluateTaskAttributes: `direction == "inbound" AND conversationSid == "${conversation.sid}"`
+                  assignmentStatus: "assigned",
+                  evaluateTaskAttributes: `conversationSid == "${conversation.sid}"`
                 });
-              
-              if(taskList.length == 0) {
+
+              // If there's one existing task, and it is NOT inbound, we can't create another.
+              if(taskList.length == 1 && JSON.parse(taskList[0].attributes).skillsNeeded != "Inbound") {
                 foundCount++;
               }
+
+              // If there's more than one existing task, it can only be one inbound and one outbound,
+              // because of the above check.  So that means we can't create any more outbound (which
+              // is the only reason we're running this code at all)
+              if(taskList.length > 1) {
+                foundCount++;
+              }
+              // If foundCount is NOT zero, we found a reason to NOT create the outbound message.
+
             }
         }
         catch(e) {
@@ -230,6 +241,7 @@ exports.handler = TokenValidator(async function (context, event, callback) {
         }
     }
 
+    // If foundCount is not zero, we found a reason to NOT create the outbound message.
     if(foundCount > 0) {
       sendResponse = {
         success: false,
